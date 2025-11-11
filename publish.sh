@@ -103,7 +103,14 @@ if [ "$MODE" == "test" ]; then
         exit 1
     fi
 else
-    twine upload dist/*
+    # Try project-specific config first, fall back to default
+    if grep -q "\[pyresolvers\]" ~/.pypirc 2>/dev/null; then
+        echo -e "${BLUE}Using project-specific PyPI token${NC}"
+        twine upload --repository pyresolvers dist/*
+    else
+        echo -e "${BLUE}Using default PyPI token${NC}"
+        twine upload dist/*
+    fi
 
     if [ $? -eq 0 ]; then
         echo ""
