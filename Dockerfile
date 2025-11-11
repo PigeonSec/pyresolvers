@@ -1,16 +1,16 @@
-FROM python:3.7.3-alpine3.9
+FROM python:3.14-alpine
 
 RUN apk add --no-cache shadow bash && \
-    mkdir /dnsvalidator && \
-    useradd --create-home --shell /sbin/nologin dnsvalidator
+    mkdir /pyresolvers && \
+    adduser -D -h /pyresolvers -s /sbin/nologin pyresolvers
 
-COPY . /dnsvalidator/
+COPY . /pyresolvers/
 
-WORKDIR /dnsvalidator/
+WORKDIR /pyresolvers/
 
-RUN chown -R dnsvalidator:dnsvalidator /dnsvalidator && \
+RUN chown -R pyresolvers:pyresolvers /pyresolvers && \
     python3 setup.py install
 
-USER dnsvalidator
+USER pyresolvers
 
-ENTRYPOINT ["/usr/local/bin/dnsvalidator"]
+ENTRYPOINT ["/usr/local/bin/pyresolvers"]

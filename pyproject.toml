@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyresolvers"
+dynamic = ["version"]
+description = "High-performance async DNS resolver validation and speed testing library"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "Karl"},
+]
+keywords = ["dns", "resolver", "validation", "speed-test", "async", "networking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Internet :: Name Service (DNS)",
+    "Topic :: System :: Networking",
+]
+dependencies = [
+    "aiodns>=3.1.0",
+    "pycares>=4.0.0",
+    "colorclass>=2.2.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/PigeonSec/pyresolvers"
+Documentation = "https://github.com/PigeonSec/pyresolvers#readme"
+Repository = "https://github.com/PigeonSec/pyresolvers"
+"Bug Tracker" = "https://github.com/PigeonSec/pyresolvers/issues"
+
+[project.scripts]
+pyresolvers = "pyresolvers.__main__:main"
+
+[tool.setuptools]
+packages = ["pyresolvers", "pyresolvers.lib", "pyresolvers.lib.core"]
+
+[tool.setuptools.dynamic]
+version = {attr = "pyresolvers.lib.core.__version__.__version__"}

@@ -1,32 +1,69 @@
-""" __Doc__ File handle class """
+"""PyResolvers setup configuration"""
 from setuptools import find_packages, setup
-from dnsvalidator.lib.core.__version__ import __version__
+import os
 
 
 def dependencies(imported_file):
-    """ __Doc__ Handles dependencies """
+    """Load dependencies from requirements file"""
     with open(imported_file) as file:
         return file.read().splitlines()
 
 
+def get_version():
+    """Get version from __version__.py file"""
+    version_file = os.path.join('pyresolvers', 'lib', 'core', '__version__.py')
+    with open(version_file) as f:
+        for line in f:
+            if line.startswith('__version__'):
+                return line.split('=')[1].strip().strip('"').strip("'")
+    return '1.0.0'
+
+
 with open("README.md") as file:
-    setup(
-        name="DNSValidator",
-        license="GPLv3",
-        description="Maintains a list of DNS servers useful for brute forcing.",
-        long_description=file.read(),
-        author="vortexau and codingo",
-        version=__version__,
-        author_email="",
-        url="https://github.com/vortexau/dnsvalidator",
-        packages=find_packages(exclude=('tests')),
-        package_data={'dnsvalidator': ['*.txt']},
-        entry_points={
-            'console_scripts': [
-                'dnsvalidator = dnsvalidator.dnsvalidator:main'
-            ]
-        },
-        install_requires=dependencies('requirements.txt'),
-        setup_requires=['pytest-runner'],
-        tests_require=dependencies('test-requirements.txt'),
-        include_package_data=True)
+    long_description = file.read()
+
+setup(
+    name="pyresolvers",
+    license="GPLv3",
+    description="High-performance async DNS resolver validation and speed testing library",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="Karl",
+    version=get_version(),
+    author_email="",
+    url="https://github.com/PigeonSec/pyresolvers",
+    project_urls={
+        "Bug Tracker": "https://github.com/PigeonSec/pyresolvers/issues",
+        "Documentation": "https://github.com/PigeonSec/pyresolvers#readme",
+        "Source Code": "https://github.com/PigeonSec/pyresolvers",
+    },
+    keywords=['dns', 'resolver', 'validation', 'speed-test', 'async', 'networking'],
+    packages=find_packages(exclude=('tests',)),
+    package_data={'pyresolvers': ['*.txt']},
+    entry_points={
+        'console_scripts': [
+            'pyresolvers = pyresolvers.__main__:main'
+        ]
+    },
+    install_requires=dependencies('requirements.txt'),
+    setup_requires=['pytest-runner'],
+    tests_require=dependencies('test-requirements.txt'),
+    include_package_data=True,
+    python_requires='>=3.8',
+    classifiers=[
+        'Development Status :: 4 - Beta',
+        'Intended Audience :: Developers',
+        'Intended Audience :: System Administrators',
+        'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
+        'Programming Language :: Python :: 3.10',
+        'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
+        'Programming Language :: Python :: 3.13',
+        'Programming Language :: Python :: 3.14',
+        'Topic :: Internet :: Name Service (DNS)',
+        'Topic :: System :: Networking',
+    ],
+)
