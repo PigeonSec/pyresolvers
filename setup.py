@@ -5,21 +5,21 @@ import os
 
 def dependencies(imported_file):
     """Load dependencies from requirements file"""
-    with open(imported_file) as file:
+    with open(imported_file, encoding='utf-8') as file:
         return file.read().splitlines()
 
 
 def get_version():
     """Get version from __version__.py file"""
     version_file = os.path.join('pyresolvers', 'lib', 'core', '__version__.py')
-    with open(version_file) as f:
+    with open(version_file, encoding='utf-8') as f:
         for line in f:
             if line.startswith('__version__'):
                 return line.split('=')[1].strip().strip('"').strip("'")
     return '1.0.0'
 
 
-with open("README.md") as file:
+with open("README.md", encoding='utf-8') as file:
     long_description = file.read()
 
 setup(
