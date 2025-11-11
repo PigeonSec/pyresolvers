@@ -29,15 +29,21 @@ jobs:
 
     - name: Run unit tests
       id: unit_tests
+      continue-on-error: true
       run: |
-        pytest tests/test_validator.py -v --tb=short
-        echo "unit_tests_passed=true" >> $GITHUB_OUTPUT
+        pytest tests/test_validator.py -v --tb=short > test-output.txt 2>&1
+        if [ $? -eq 0 ]; then
+          echo "unit_tests_passed=true" >> $GITHUB_OUTPUT
+        fi
 
     - name: Run CLI tests
       id: cli_tests
+      continue-on-error: true
       run: |
-        pytest tests/test_cli.py -v --tb=short
-        echo "cli_tests_passed=true" >> $GITHUB_OUTPUT
+        pytest tests/test_cli.py -v --tb=short >> test-output.txt 2>&1
+        if [ $? -eq 0 ]; then
+          echo "cli_tests_passed=true" >> $GITHUB_OUTPUT
+        fi
 
     - name: Check if security update
       id: check_security
@@ -119,3 +125,64 @@ This release was automatically created after Dependabot's security updates passe
 See PR #${{ github.event.pull_request.number }} for details."
 
         echo "✅ Created release v$NEW_VERSION"
+
+    - name: Send Discord notification on test failure
+      if: |
+        steps.unit_tests.outputs.unit_tests_passed != 'true' ||
+        steps.cli_tests.outputs.cli_tests_passed != 'true'
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        TEST_OUTPUT=$(cat test-output.txt 2>/dev/null | tail -50 || echo "No test output available")
+        TEST_OUTPUT=$(echo "$TEST_OUTPUT" | jq -Rs .)
+
+        PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq .title)
+        PR_URL="https://github.com/${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+
+        curl -H "Content-Type: application/json" \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"🚨 Dependabot PR Tests Failed - Manual Review Required\",
+              \"description\": \"A Dependabot security update PR has failing tests.\",
+              \"color\": 15158332,
+              \"fields\": [
+                {
+                  \"name\": \"Repository\",
+                  \"value\": \"${{ github.repository }}\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"PR\",
+                  \"value\": \"[#${{ github.event.pull_request.number }}]($PR_URL)\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Run ID\",
+                  \"value\": \"[${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"⚠️ Issue\",
+                  \"value\": \"Dependabot created a security update PR but tests failed.\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"📋 PR Title\",
+                  \"value\": \"$PR_TITLE\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"🧪 Test Output (last 50 lines)\",
+                  \"value\": \"\`\`\`\n\" + $TEST_OUTPUT + \"\n\`\`\`\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"🔗 Actions\",
+                  \"value\": \"Please review the [PR]($PR_URL) and [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) to fix the failing tests.\",
+                  \"inline\": false
+                }
+              ],
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" \
+          "$DISCORD_WEBHOOK"

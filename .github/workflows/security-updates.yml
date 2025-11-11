@@ -73,9 +73,10 @@ jobs:
     - name: Run all tests
       if: steps.fix_vulnerabilities.outputs.updated == 'true'
       id: run_tests
+      continue-on-error: true
       run: |
-        pytest tests/test_validator.py -v --tb=short
-        pytest tests/test_cli.py -v --tb=short
+        pytest tests/test_validator.py -v --tb=short > test-output.txt 2>&1
+        pytest tests/test_cli.py -v --tb=short >> test-output.txt 2>&1
         echo "tests_passed=true" >> $GITHUB_OUTPUT
 
     - name: Get current version
@@ -187,6 +188,121 @@ EOF
           echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
           echo "PR will merge automatically once all checks pass"
         fi
+
+    - name: Send Discord notification on test failure
+      if: |
+        steps.fix_vulnerabilities.outputs.updated == 'true' &&
+        steps.run_tests.outputs.tests_passed != 'true'
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        SECURITY_REPORT=$(cat security-report.txt 2>/dev/null | head -30 || echo "No security report available")
+        TEST_OUTPUT=$(cat test-output.txt 2>/dev/null | tail -50 || echo "No test output available")
+
+        # Escape JSON special characters
+        SECURITY_REPORT=$(echo "$SECURITY_REPORT" | jq -Rs .)
+        TEST_OUTPUT=$(echo "$TEST_OUTPUT" | jq -Rs .)
+
+        curl -H "Content-Type: application/json" \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"🚨 Security Update Failed - Manual Review Required\",
+              \"description\": \"A security update was attempted but tests failed. Manual intervention is needed.\",
+              \"color\": 15158332,
+              \"fields\": [
+                {
+                  \"name\": \"Repository\",
+                  \"value\": \"${{ github.repository }}\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Workflow\",
+                  \"value\": \"Security Updates\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Run ID\",
+                  \"value\": \"[${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"⚠️ Issue\",
+                  \"value\": \"Security vulnerabilities were found and dependencies were updated, but tests failed after the update.\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"📋 Security Report (truncated)\",
+                  \"value\": \"\`\`\`\n\" + $SECURITY_REPORT + \"\n\`\`\`\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"🧪 Test Output (last 50 lines)\",
+                  \"value\": \"\`\`\`\n\" + $TEST_OUTPUT + \"\n\`\`\`\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"🔗 Actions\",
+                  \"value\": \"Please review the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) and fix the failing tests manually.\",
+                  \"inline\": false
+                }
+              ],
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" \
+          "$DISCORD_WEBHOOK"
+
+    - name: Send Discord notification on upgrade failure
+      if: |
+        (steps.pip_audit.outputs.vulnerabilities_found == 'true' || steps.safety_check.outputs.safety_issues == 'true') &&
+        steps.fix_vulnerabilities.outputs.updated != 'true'
+      env:
+        DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      run: |
+        SECURITY_REPORT=$(cat security-report.txt 2>/dev/null || echo "No security report available")
+        SECURITY_REPORT=$(echo "$SECURITY_REPORT" | jq -Rs .)
+
+        curl -H "Content-Type: application/json" \
+          -d "{
+            \"embeds\": [{
+              \"title\": \"⚠️ Security Vulnerabilities Found - Upgrade Failed\",
+              \"description\": \"Security vulnerabilities detected but automatic upgrade failed.\",
+              \"color\": 16776960,
+              \"fields\": [
+                {
+                  \"name\": \"Repository\",
+                  \"value\": \"${{ github.repository }}\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Workflow\",
+                  \"value\": \"Security Updates\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"Run ID\",
+                  \"value\": \"[${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})\",
+                  \"inline\": true
+                },
+                {
+                  \"name\": \"⚠️ Issue\",
+                  \"value\": \"Could not automatically upgrade dependencies. Manual upgrade required.\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"📋 Security Report\",
+                  \"value\": \"\`\`\`\n\" + $SECURITY_REPORT + \"\n\`\`\`\",
+                  \"inline\": false
+                },
+                {
+                  \"name\": \"🔗 Actions\",
+                  \"value\": \"Please review the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) and upgrade dependencies manually.\",
+                  \"inline\": false
+                }
+              ],
+              \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"
+            }]
+          }" \
+          "$DISCORD_WEBHOOK"
 
     - name: No vulnerabilities found
       if: steps.pip_audit.outputs.vulnerabilities_found != 'true' && steps.safety_check.outputs.safety_issues != 'true'
