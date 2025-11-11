@@ -74,23 +74,75 @@ pip install pyresolvers
 
 ### CLI Commands
 
+**Basic validation:**
 ```bash
-# Test single resolver
-pyresolvers -t 1.1.1.1
+$ pyresolvers -t 1.1.1.1
+=======================================================
+pyresolvers v2.0.1 - DNS Resolver Validator
+=======================================================
+[10:25:04] [INFO] Testing 1 servers
+[10:25:04] [INFO] Establishing baseline...
+[10:25:04] [INFO] Validating with concurrency=50...
+[10:25:04] [ACCEPTED] [1.1.1.1] 20.49ms
+[10:25:04] [INFO] Found 1 valid servers
+```
 
-# Test from file or URL
-pyresolvers -tL dns_servers.txt
+**Test multiple servers from file:**
+```bash
+$ pyresolvers -tL dns_servers.txt
+[10:25:11] [INFO] Testing 3 servers
+[10:25:11] [INFO] Establishing baseline...
+[10:25:11] [INFO] Validating with concurrency=50...
+[10:25:11] [ACCEPTED] [9.9.9.9] 9.00ms
+[10:25:11] [ACCEPTED] [8.8.8.8] 15.79ms
+[10:25:11] [ACCEPTED] [1.1.1.1] 19.69ms
+[10:25:11] [INFO] Found 3 valid servers
+```
+
+**Silent mode (IPs only, perfect for piping):**
+```bash
+$ pyresolvers -tL dns_servers.txt --silent
+9.9.9.9
+8.8.8.8
+1.1.1.1
+```
+
+**Verbose mode with speed filtering:**
+```bash
+$ pyresolvers -tL dns_servers.txt --max-speed 15 -v
+[10:25:27] [INFO] Testing 3 servers
+[10:25:27] [INFO] Max speed filter: 15.0ms
+[10:25:28] [ACCEPTED] [9.9.9.9] 9.05ms
+[10:25:28] [REJECTED] [1.1.1.1] Too slow: 20.30ms
+[10:25:28] [REJECTED] [8.8.8.8] Too slow: 20.22ms
+[10:25:28] [INFO] Found 1 valid servers
+```
+
+**JSON output format:**
+```bash
+$ pyresolvers -tL dns_servers.txt --format json
+{
+  "servers": [
+    {"ip": "9.9.9.9", "latency_ms": 10.3},
+    {"ip": "8.8.8.8", "latency_ms": 15.96},
+    {"ip": "1.1.1.1", "latency_ms": 20.35}
+  ],
+  "count": 3,
+  "filters": {"min_ms": null, "max_ms": null}
+}
+```
+
+**More examples:**
+```bash
+# Test from URL
 pyresolvers -tL https://public-dns.info/nameservers.txt
 
-# Speed filtering and output formats
+# Speed filtering and save to file
 pyresolvers -tL resolvers.txt --max-speed 50 -o fast_dns.txt
 pyresolvers -tL resolvers.txt --min-speed 10 --max-speed 100
-pyresolvers -tL resolvers.txt --format json -o valid_dns.json
-pyresolvers -tL resolvers.txt --format text-with-speed -o dns_with_speed.txt
 
-# Verbose and silent modes
-pyresolvers -tL resolvers.txt --max-speed 100 -v  # See rejected/slow servers
-pyresolvers -tL resolvers.txt --silent > ips.txt  # IPs only, no banner
+# Text with speed output
+pyresolvers -tL resolvers.txt --format text-with-speed -o dns_with_speed.txt
 
 # Exclusions
 pyresolvers -tL all_resolvers.txt -e 8.8.8.8
@@ -433,25 +485,6 @@ Keep concurrency reasonable (50-100) to avoid triggering rate limits. Very high 
 ### Domain Selection
 
 Use **non-geolocated** domains for baseline (bet365.com works well). Avoid google.com, facebook.com as they return different IPs by location.
-
----
-
-## Project Structure
-
-```
-pyresolvers/
-├── pyresolvers/
-│   ├── __init__.py          # Package exports
-│   ├── __main__.py          # CLI entry
-│   ├── validator.py         # Async validation
-│   └── lib/core/
-│       ├── input.py         # CLI args
-│       ├── output.py        # Formatting
-│       └── __version__.py
-├── requirements.txt
-├── setup.py
-└── README.md
-```
 
 ---
 
