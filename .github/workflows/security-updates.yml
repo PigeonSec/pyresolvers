@@ -195,7 +195,8 @@ EOF
           # Create GitHub release (this will trigger PyPI publish)
           gh release create "v$NEW_VERSION" \
             --title "v$NEW_VERSION - Automated Security Update" \
-            --notes "## Automated Security Update
+            --notes "$(cat <<'EOF'
+## Automated Security Update
 
 This release includes automated security dependency updates.
 
@@ -211,8 +212,8 @@ This release was automatically created by the security workflow:
 3. Tests passed
 4. PR merged
 5. Release published
-
-PR: #$PR_NUMBER"
+EOF
+)"
 
           echo "✅ Released v$NEW_VERSION - PyPI publish triggered"
         fi
