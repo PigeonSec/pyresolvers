@@ -106,20 +106,26 @@ jobs:
 
         # Create GitHub release (this will trigger PyPI publish)
         PR_NUM="${{ github.event.pull_request.number }}"
+
+        cat > /tmp/release-notes.md <<-'EOFNOTES'
+        ## Automated Security Update from Dependabot
+
+        This release includes security updates from Dependabot.
+
+        ### Changes
+        - Dependabot security dependency updates
+        - All tests passed ✅
+
+        ### Automated Process
+        This release was automatically created after Dependabot's PR passed all tests.
+        EOFNOTES
+
+        echo "" >> /tmp/release-notes.md
+        echo "Original PR: #${PR_NUM}" >> /tmp/release-notes.md
+
         gh release create "v$NEW_VERSION" \
           --title "v$NEW_VERSION - Dependabot Security Update" \
-          --notes "## Automated Security Update from Dependabot
-
-This release includes security updates from Dependabot.
-
-### Changes
-- Dependabot security dependency updates
-- All tests passed ✅
-
-### Automated Process
-This release was automatically created after Dependabot's PR passed all tests.
-
-Original PR: #${PR_NUM}"
+          --notes-file /tmp/release-notes.md
 
         echo "✅ Created release v$NEW_VERSION - PyPI publish triggered"
 
