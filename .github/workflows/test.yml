@@ -30,7 +30,7 @@ jobs:
 
     - name: Test imports
       run: |
-        python -c "from pyresolvers import Validator, ValidationResult; print('✓ Imports successful')"
+        python -c "from pyresolvers import Validator, ValidationResult; print('Imports successful')"
 
     - name: Test CLI
       run: |
@@ -38,7 +38,7 @@ jobs:
 
     - name: Test basic functionality
       run: |
-        python -c "from pyresolvers import Validator; v = Validator(); print('✓ Validator works')"
+        python -c "from pyresolvers import Validator; v = Validator(); print('Validator works')"
 
   lint:
     runs-on: ubuntu-latest

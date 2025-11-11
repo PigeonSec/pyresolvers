@@ -1,5 +1,6 @@
 # VIM temporary files
 *.pyc
+publish.sh
 
 # Distribution / packaging
 .Python
