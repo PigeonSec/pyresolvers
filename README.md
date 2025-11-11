@@ -72,49 +72,65 @@ pip install pyresolvers
 
 ## Quick Start
 
-### Command Line
+### CLI Commands
 
 ```bash
 # Test single resolver
 pyresolvers -t 1.1.1.1
 
-# Test from URL (public DNS list) with optimized settings
-pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 200 -threads 200 -timeout 0.5
-
-# Test from file
+# Test from file or URL
 pyresolvers -tL dns_servers.txt
+pyresolvers -tL https://public-dns.info/nameservers.txt
 
-# Get fastest resolvers (< 50ms) and save
-pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 50 -o fast_dns.txt
+# Speed filtering and output formats
+pyresolvers -tL resolvers.txt --max-speed 50 -o fast_dns.txt
+pyresolvers -tL resolvers.txt --min-speed 10 --max-speed 100
+pyresolvers -tL resolvers.txt --format json -o valid_dns.json
+pyresolvers -tL resolvers.txt --format text-with-speed -o dns_with_speed.txt
 
-# Verbose mode - see rejected/slow servers
-pyresolvers -tL resolvers.txt --max-speed 100 -v
+# Verbose and silent modes
+pyresolvers -tL resolvers.txt --max-speed 100 -v  # See rejected/slow servers
+pyresolvers -tL resolvers.txt --silent > ips.txt  # IPs only, no banner
 
-# Export as JSON with speed data
-pyresolvers -tL resolvers.txt --format json --max-speed 100 -o valid_dns.json
+# Exclusions
+pyresolvers -tL all_resolvers.txt -e 8.8.8.8
+pyresolvers -tL resolvers.txt -eL blacklist.txt
+
+# Performance tuning
+pyresolvers -tL large_list.txt -threads 200 -timeout 0.5
+pyresolvers -tL https://public-dns.info/nameservers.txt -threads 200 --max-speed 30 | head -10
 ```
 
-### Python Library
+### Library Usage
 
 ```python
 from pyresolvers import Validator
 
-# Basic usage
+# Basic usage - get valid servers ordered by speed
 validator = Validator()
 servers = ['1.1.1.1', '8.8.8.8', '9.9.9.9']
 results = validator.validate_by_speed(servers)
 
 for server, latency in results:
     print(f"{server}: {latency:.2f}ms")
-```
 
-```python
-# High concurrency for large lists
+# High concurrency with speed filtering
 validator = Validator(concurrency=100)
-results = validator.validate_by_speed(large_server_list, max_ms=100)
-```
+fast = validator.validate_by_speed(servers, max_ms=50)
 
-```python
+# Detailed results with error information
+results = validator.validate(servers)
+for r in results:
+    if r.valid:
+        print(f"✓ {r.server}: {r.latency_ms:.2f}ms")
+    else:
+        print(f"✗ {r.server}: {r.error}")
+
+# JSON export
+json_output = validator.to_json(servers, max_ms=100, pretty=True)
+with open('valid_dns.json', 'w') as f:
+    f.write(json_output)
+
 # Async usage
 import asyncio
 
@@ -124,67 +140,8 @@ async def main():
     return results
 
 results = asyncio.run(main())
-```
 
----
-
-## Examples
-
-### CLI Usage
-
-```bash
-# Use public DNS list from URL with optimized performance
-pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 200 -threads 200 -timeout 0.5
-
-# Speed filtering (10ms-100ms range)
-pyresolvers -tL resolvers.txt --min-speed 10 --max-speed 100
-
-# Verbose mode - see all results including rejected/too-slow
-pyresolvers -tL resolvers.txt --max-speed 100 -v
-
-# Silent mode (IPs only) - great for piping
-pyresolvers -tL https://public-dns.info/nameservers.txt --silent --max-speed 30 > fast.txt
-
-# Exclude specific servers
-pyresolvers -tL all_resolvers.txt -e 8.8.8.8
-
-# Exclude servers from URL
-pyresolvers -tL https://public-dns.info/nameservers.txt -eL blacklist.txt
-
-# Maximum performance (200 concurrent, 0.5s timeout)
-pyresolvers -tL large_list.txt -threads 200 -timeout 0.5
-
-# Get top 10 fastest worldwide resolvers with real-time streaming
-pyresolvers -tL https://public-dns.info/nameservers.txt -threads 200 --max-speed 30 --format text-with-speed | head -10
-```
-
-### Library Usage
-
-**Filter by Speed:**
-```python
-validator = Validator(concurrency=50)
-fast = validator.validate_by_speed(servers, max_ms=50)
-```
-
-**Detailed Results:**
-```python
-results = validator.validate(servers)
-for r in results:
-    if r.valid:
-        print(f"✓ {r.server}: {r.latency_ms:.2f}ms")
-    else:
-        print(f"✗ {r.server}: {r.error}")
-```
-
-**JSON Export:**
-```python
-json_output = validator.to_json(servers, max_ms=100, pretty=True)
-with open('valid_dns.json', 'w') as f:
-    f.write(json_output)
-```
-
-**Streaming (Memory Efficient):**
-```python
+# Streaming for huge lists (memory efficient)
 async def process_huge_list():
     validator = Validator(concurrency=100)
     async for server, latency in validator.validate_streaming_async(servers):
@@ -193,34 +150,52 @@ async def process_huge_list():
 asyncio.run(process_huge_list())
 ```
 
-### Cronjob Example
+### Cronjob Examples
 
-**Bash Script:**
+**Daily DNS validation with API upload:**
 ```bash
 #!/bin/bash
 # /usr/local/bin/dns_monitor.sh
 
-API_URL="https://api.example.com/dns/update"
 OUTPUT_DIR="/var/lib/dns-monitor"
-
 mkdir -p "$OUTPUT_DIR"
 
-# Validate and save
+# Validate and save to JSON
 pyresolvers -tL https://public-dns.info/nameservers.txt \
     --max-speed 100 \
     --format json \
     -o "$OUTPUT_DIR/resolvers.json"
 
-# Send to API
-curl -X POST "$API_URL" \
+# Upload to API
+curl -X POST "https://api.example.com/dns/update" \
     -H "Content-Type: application/json" \
     -d @"$OUTPUT_DIR/resolvers.json"
 ```
 
-**Crontab:**
+**Fast resolver discovery and update:**
+```bash
+#!/bin/bash
+# /usr/local/bin/update_fast_dns.sh
+
+# Get fastest resolvers (< 30ms) and update system config
+pyresolvers -tL https://public-dns.info/nameservers.txt \
+    --max-speed 30 \
+    --silent \
+    -threads 200 \
+    -timeout 0.5 \
+    -o /tmp/fast_dns.txt
+
+# Use top 3 fastest
+head -3 /tmp/fast_dns.txt > /etc/my_app/dns_servers.conf
+```
+
+**Crontab entries:**
 ```cron
-# Run every 6 hours
-0 */6 * * * /usr/local/bin/dns_monitor.sh >> /var/log/dns-monitor.log 2>&1
+# Daily API sync at 2 AM
+0 2 * * * /usr/local/bin/dns_monitor.sh >> /var/log/dns-monitor.log 2>&1
+
+# Update fast DNS every 6 hours
+0 */6 * * * /usr/local/bin/update_fast_dns.sh >> /var/log/dns-update.log 2>&1
 ```
 
 ---
