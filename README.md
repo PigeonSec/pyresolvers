@@ -48,6 +48,19 @@ PyResolvers is a high-performance async Python library and CLI tool for validati
 - Default (50 threads): ~77 minutes
 - Optimized (200 threads, 0.5s timeout): **~30 minutes**
 
+#### 📥 Download
+
+If this is too slow for you, you can use my **pre-computed resolver lists**, updated automatically every 48 hours:
+
+| File | Description | Raw URL |
+|------|--------------|---------|
+| [`resolvers.json`](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/resolvers.json) | Full dataset with latency metrics | [raw link](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/resolvers.json) |
+| [`fast_resolvers.txt`](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/fast_resolvers.txt) | Fast resolvers (< 50 ms) | [raw link](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/fast_resolvers.txt) |
+| [`medium_resolvers.txt`](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/medium_resolvers.txt) | Medium resolvers (< 150 ms) | [raw link](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/medium_resolvers.txt) |
+| [`all_resolvers.txt`](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/all_resolvers.txt) | All working resolvers | [raw link](https://raw.githubusercontent.com/PigeonSec/dns-resolvers/refs/heads/main/all_resolvers.txt) |
+
+📦 **Repository:** [PigeonSec/dns-resolvers](https://github.com/PigeonSec/dns-resolvers)
+
 ---
 
 ## Installation
