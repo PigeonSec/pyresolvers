@@ -5,6 +5,13 @@ All notable changes to PyResolvers will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.3] - 2025-01-11
+
+### Fixed
+- Fixed text output mode to use latency from validation results instead of separate measurement
+- This ensures text output and JSON output return the same number of results
+- Previously text mode could drop valid servers if the separate latency query failed
+
 ## [2.4.2] - 2025-01-11
 
 ### Fixed

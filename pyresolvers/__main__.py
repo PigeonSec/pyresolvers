@@ -58,7 +58,7 @@ async def output_results_async(validator: Validator, targets: List[str], args: A
         async def test_and_show(server: str):
             nonlocal tested
             async with semaphore:
-                # Fast validation first
+                # Validate and measure latency in one go
                 result = await validator._validate_server(server)
                 tested += 1
 
@@ -66,23 +66,22 @@ async def output_results_async(validator: Validator, targets: List[str], args: A
                 if tested % 100 == 0:
                     print(f"[Progress] {tested}/{len(targets)} tested", flush=True)
 
-                # If valid, measure latency quickly
-                if result.valid:
-                    latency = await validator._measure_latency(server)
+                # If valid, use latency from validation result
+                if result.valid and result.latency_ms > 0:
+                    latency = result.latency_ms
 
-                    if latency > 0:
-                        # Check speed filter
-                        passes_filter = (not args.min_speed or latency >= args.min_speed) and \
-                                       (not args.max_speed or latency <= args.max_speed)
+                    # Check speed filter
+                    passes_filter = (not args.min_speed or latency >= args.min_speed) and \
+                                   (not args.max_speed or latency <= args.max_speed)
 
-                        if passes_filter:
-                            if not args.silent:
-                                out.terminal(Level.ACCEPTED, server, f"{latency:.2f}ms")
-                            else:
-                                print(server, flush=True)
-                            return (server, latency)
-                        elif args.verbose:
-                            out.terminal(Level.REJECTED, server, f"Too slow: {latency:.2f}ms")
+                    if passes_filter:
+                        if not args.silent:
+                            out.terminal(Level.ACCEPTED, server, f"{latency:.2f}ms")
+                        else:
+                            print(server, flush=True)
+                        return (server, latency)
+                    elif args.verbose:
+                        out.terminal(Level.REJECTED, server, f"Too slow: {latency:.2f}ms")
                 elif args.verbose:
                     # Show failures in verbose mode
                     out.terminal(Level.REJECTED, server, result.error or "Invalid")
