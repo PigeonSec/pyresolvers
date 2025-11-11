@@ -20,16 +20,17 @@ class OutputHelper:
     """Formatted terminal output handler."""
 
     _FORMATS = {
-        Level.VERBOSE: Color('{autoblue}[VERBOSE]{/autoblue}'),
-        Level.INFO: Color('{autoyellow}[INFO]{/autoyellow}'),
-        Level.ACCEPTED: Color('{autogreen}[ACCEPTED]{/autogreen}'),
-        Level.REJECTED: Color('{autored}[REJECTED]{/autored}'),
-        Level.ERROR: Color('{autobgyellow}{autored}[ERROR]{/autored}{/autobgyellow}')
+        Level.VERBOSE: '{autoblue}[VERBOSE]{/autoblue}',
+        Level.INFO: '{autoyellow}[INFO]{/autoyellow}',
+        Level.ACCEPTED: '{autogreen}[ACCEPTED]{/autogreen}',
+        Level.REJECTED: '{autored}[REJECTED]{/autored}',
+        Level.ERROR: '{autobgyellow}{autored}[ERROR]{/autored}{/autobgyellow}'
     }
     _SEP = "=" * 55
 
     def __init__(self, arguments: Any) -> None:
-        if getattr(arguments, 'nocolor', False):
+        self.nocolor = getattr(arguments, 'nocolor', False)
+        if self.nocolor:
             disable_all_colors()
         self.verbose = getattr(arguments, 'verbose', False)
         self.silent = getattr(arguments, 'silent', False)
@@ -50,7 +51,16 @@ class OutputHelper:
                 print(target, flush=True)
             return
 
-        leader = self._FORMATS.get(level, '[#]')
+        leader_fmt = self._FORMATS.get(level, '[#]')
+        if self.nocolor:
+            # Extract just the label text (e.g., "[INFO]") without color codes
+            if leader_fmt != '[#]':
+                leader = '[' + leader_fmt.split('[')[1].split(']')[0] + ']'
+            else:
+                leader = '[#]'
+        else:
+            leader = Color(leader_fmt)
+
         time_str = strftime("%H:%M:%S", localtime())
 
         if target == 0 or target == "0":

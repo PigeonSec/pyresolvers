@@ -105,6 +105,12 @@ async def output_results_async(validator: Validator, targets: List[str], args: A
 
 async def main_async() -> None:
     args = InputParser().parse(sys.argv[1:])
+
+    # Disable colors early if requested
+    if hasattr(args, 'nocolor') and args.nocolor:
+        from colorclass import disable_all_colors
+        disable_all_colors()
+
     out = OutputHelper(args)
     out.print_banner()
 

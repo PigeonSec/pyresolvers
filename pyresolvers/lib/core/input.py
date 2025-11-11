@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
+import argparse
 import re
-import sys
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 from urllib.parse import urlparse
@@ -174,16 +174,19 @@ class InputParser:
         parser = ArgumentParser(
             prog='pyresolvers',
             description='High-Performance Async DNS Resolver Validator & Speed Tester',
+            usage=argparse.SUPPRESS,
             epilog='''
 Examples:
-  pyresolvers -t 1.1.1.1                                    # Test single server
-  pyresolvers -tL dns_list.txt --max-speed 50              # Test file, filter <50ms
-  pyresolvers -tL url --max-speed 200 -threads 200 -timeout 0.5  # Fast scan
-  pyresolvers -tL list.txt -v --max-speed 100              # Verbose with filtering
-  pyresolvers -tL list.txt --format json -o results.json  # Export to JSON
-  pyresolvers -tL list.txt --silent > fast.txt            # Pipe IPs only
+  pyresolvers -t 1.1.1.1                          # Test single server
+  pyresolvers -tL dns.txt --max-speed 50          # Fast servers only
+  pyresolvers -tL dns.txt -v --max-speed 100      # Verbose mode with filtering
+  pyresolvers -tL dns.txt --format json -o out.json  # JSON export
+  pyresolvers -tL dns.txt --silent > valid.txt    # Silent mode (pipe IPs)
 
-For more info: https://github.com/PigeonSec/pyresolvers
+Cron Usage (recommended):
+  pyresolvers -tL url --max-speed 200 -threads 200 -timeout 0.5 --silent -o fast_resolvers.txt
+
+Docs: https://github.com/PigeonSec/pyresolvers
             ''',
             formatter_class=lambda prog: RawDescriptionHelpFormatter(prog, max_help_position=35, width=100)
         )
@@ -194,27 +197,27 @@ For more info: https://github.com/PigeonSec/pyresolvers
         targets.add_argument(
             '-t', dest='target',
             metavar='IP',
-            help='Test single DNS server (e.g., -t 1.1.1.1)'
+            help='Single DNS server to test'
         )
         targets.add_argument(
             '-tL', dest='target_list',
             default="https://public-dns.info/nameservers.txt",
             metavar='FILE/URL',
             type=lambda x: InputHelper.process_targets(parser, x),
-            help='File or URL with DNS servers (default: public-dns.info list)'
+            help='File or URL with DNS server list'
         )
 
         exclusions = input_group.add_mutually_exclusive_group()
         exclusions.add_argument(
             '-e', dest='exclusion',
             metavar='IP',
-            help='Exclude single server (e.g., -e 8.8.8.8)'
+            help='Exclude single server'
         )
         exclusions.add_argument(
             '-eL', dest='exclusions_list',
             metavar='FILE/URL',
             type=lambda x: InputHelper.process_targets(parser, x),
-            help='File or URL with servers to exclude'
+            help='File or URL with exclusion list'
         )
 
         # VALIDATION OPTIONS
@@ -223,7 +226,7 @@ For more info: https://github.com/PigeonSec/pyresolvers
             '-r', dest='rootdomain',
             default="bet365.com",
             metavar='DOMAIN',
-            help='Baseline domain for validation (default: bet365.com)'
+            help='Baseline validation domain (default: bet365.com)'
         )
         valid_group.add_argument(
             '-q', dest='query',
@@ -239,14 +242,14 @@ For more info: https://github.com/PigeonSec/pyresolvers
             default=50,
             metavar='N',
             type=lambda x: InputHelper.check_positive(parser, x),
-            help='Concurrent workers (default: 50, recommended: 100-200 for speed)'
+            help='Concurrent workers (default: 50)'
         )
         perf_group.add_argument(
             '-timeout', dest='timeout',
             default=1,
             metavar='SEC',
             type=lambda x: InputHelper.check_positive_float(parser, x),
-            help='DNS timeout in seconds (default: 1, use 0.5 for speed)'
+            help='DNS timeout in seconds (default: 1)'
         )
 
         # FILTERING OPTIONS
@@ -255,13 +258,13 @@ For more info: https://github.com/PigeonSec/pyresolvers
             '--max-speed', dest='max_speed',
             type=float,
             metavar='MS',
-            help='Only show servers faster than MS milliseconds (e.g., --max-speed 50)'
+            help='Only show servers faster than X ms'
         )
         filter_group.add_argument(
             '--min-speed', dest='min_speed',
             type=float,
             metavar='MS',
-            help='Only show servers slower than MS milliseconds (for filtering out local)'
+            help='Only show servers slower than X ms'
         )
 
         # OUTPUT OPTIONS
@@ -269,32 +272,32 @@ For more info: https://github.com/PigeonSec/pyresolvers
         output_group.add_argument(
             '-o', '--output',
             metavar='FILE',
-            help='Save results to file (format depends on --format flag)'
+            help='Save results to file'
         )
         output_group.add_argument(
             '--format', dest='output_format',
             default='text',
             choices=['text', 'json', 'text-with-speed'],
             metavar='FMT',
-            help='Output format: text (IPs only), json (with latency), text-with-speed (IP + latency)'
+            help='Output format: text, json, or text-with-speed'
         )
 
         output_types = output_group.add_mutually_exclusive_group()
         output_types.add_argument(
             '-v', '--verbose', dest='verbose',
             action='store_true',
-            help='Show rejected servers with reasons (Too slow, Timeout, Invalid, Poisoned)'
+            help='Show rejected servers with reasons'
         )
         output_types.add_argument(
             '--silent', dest='silent',
             action='store_true',
-            help='Only output valid IPs, no banners or progress (great for piping)'
+            help='Only output valid IPs (for piping)'
         )
 
         output_group.add_argument(
             '--no-color', dest='nocolor',
             action='store_true',
-            help='Disable colored terminal output'
+            help='Disable colored output'
         )
 
         return parser

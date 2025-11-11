@@ -1,10 +1,14 @@
-name: Tests
+name: Test and Publish
 
 on:
   push:
     branches: [ master, main, develop ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ master, main ]
+  release:
+    types: [published]
 
 jobs:
   test:
@@ -27,18 +31,24 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e .
+        pip install pytest
 
     - name: Test imports
       run: |
         python -c "from pyresolvers import Validator, ValidationResult; print('Imports successful')"
 
-    - name: Test CLI
+    - name: Test CLI help
       run: |
         pyresolvers -h
 
-    - name: Test basic functionality
+    - name: Run unit tests
       run: |
-        python -c "from pyresolvers import Validator; v = Validator(); print('Validator works')"
+        pytest tests/test_validator.py -v --tb=short
+
+    - name: Run CLI tests
+      run: |
+        pytest tests/test_cli.py -v --tb=short
+      timeout-minutes: 15
 
   lint:
     runs-on: ubuntu-latest
@@ -53,13 +63,39 @@ jobs:
     - name: Install linting tools
       run: |
         python -m pip install --upgrade pip
-        pip install flake8 black mypy
+        pip install flake8
 
     - name: Lint with flake8
       run: |
         flake8 pyresolvers --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 pyresolvers --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
-    - name: Check formatting with black
+  publish:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install build dependencies
       run: |
-        black --check pyresolvers || true
+        python -m pip install --upgrade pip
+        pip install build twine
+
+    - name: Build package
+      run: python -m build
+
+    - name: Check package
+      run: twine check dist/*
+
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_KEY }}
+      run: twine upload dist/*
