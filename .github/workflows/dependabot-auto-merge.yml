@@ -72,7 +72,7 @@ jobs:
 
         echo "✅ Auto-merge enabled for Dependabot PR #${{ github.event.pull_request.number }}"
 
-    - name: Create release if security update
+    - name: Leave comment for manual release
       if: |
         steps.unit_tests.outputs.unit_tests_passed == 'true' &&
         steps.cli_tests.outputs.cli_tests_passed == 'true' &&
@@ -80,51 +80,17 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        # Wait for PR to merge
-        sleep 10
+        gh pr comment ${{ github.event.pull_request.number }} --body "✅ **Security update tests passed!**
 
-        # Get current version
-        VERSION=$(python -c "import re; content=open('pyresolvers/lib/core/__version__.py').read(); print(re.search(r\"'([^']+)'\", content).group(1))")
+This PR will be auto-merged. After merging:
+1. Update the version in \`pyresolvers/lib/core/__version__.py\`
+2. Create a GitHub release with that version tag
+3. The release will automatically trigger PyPI publish
 
-        # Calculate new patch version
-        IFS='.' read -ra PARTS <<< "$VERSION"
-        MAJOR="${PARTS[0]}"
-        MINOR="${PARTS[1]}"
-        PATCH="${PARTS[2]}"
-        NEW_PATCH=$((PATCH + 1))
-        NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-
-        # Update version file
-        echo "__version__ = '$NEW_VERSION'" > pyresolvers/lib/core/__version__.py
-
-        # Commit and push
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add pyresolvers/lib/core/__version__.py
-        git commit -m "Bump version to $NEW_VERSION for security update"
-        git push
-
-        # Create tag
-        git tag -a "v$NEW_VERSION" -m "Security update v$NEW_VERSION"
-        git push --tags
-
-        # Create GitHub release (this will trigger PyPI publish)
-        gh release create "v$NEW_VERSION" \
-          --title "v$NEW_VERSION - Security Update" \
-          --notes "## Security Update
-
-This release includes security dependency updates from Dependabot.
-
-### Changes
-- Security dependency updates
-- All tests passed ✅
-
-### Automated Release
-This release was automatically created after Dependabot's security updates passed all tests.
-
-See PR #${{ github.event.pull_request.number }} for details."
-
-        echo "✅ Created release v$NEW_VERSION"
+Or use the automated helper:
+\`\`\`bash
+./publish_helper.sh
+\`\`\`"
 
     - name: Send Discord notification on test failure
       if: |

@@ -168,12 +168,13 @@ EOF
           --head $BRANCH_NAME \
           --label "security,automated"
 
-    - name: Auto-merge if tests pass
+    - name: Auto-approve and comment on PR
       if: steps.run_tests.outputs.tests_passed == 'true'
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
         BRANCH_NAME="security/auto-update-$(date +%Y%m%d)"
+        NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
 
         # Wait a moment for PR to be created
         sleep 5
@@ -182,11 +183,27 @@ EOF
         PR_NUMBER=$(gh pr list --head $BRANCH_NAME --json number --jq '.[0].number')
 
         if [ ! -z "$PR_NUMBER" ]; then
-          # Enable auto-merge
-          gh pr merge $PR_NUMBER --auto --squash --delete-branch
+          # Approve the PR
+          gh pr review $PR_NUMBER --approve --body "✅ All security tests passed. Auto-approving."
 
-          echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
-          echo "PR will merge automatically once all checks pass"
+          # Add comment with next steps
+          gh pr comment $PR_NUMBER --body "✅ **Security update ready - v$NEW_VERSION**
+
+All tests passed! This PR contains security fixes and version bump to v$NEW_VERSION.
+
+**Next steps:**
+1. Review the security updates above
+2. Merge this PR
+3. Create a GitHub release with tag \`v$NEW_VERSION\`
+4. Release will automatically publish to PyPI
+
+Or use the automated helper after merging:
+\`\`\`bash
+git pull
+./publish_helper.sh
+\`\`\`"
+
+          echo "✅ Approved and commented on PR #$PR_NUMBER"
         fi
 
     - name: Send Discord notification on test failure
