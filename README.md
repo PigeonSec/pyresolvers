@@ -24,22 +24,30 @@ PyResolvers is a high-performance async Python library and CLI tool for validati
 
 ### Features
 
-- ⚡ **High-Performance Async** - 2-3x faster than thread-based validators
+- ⚡ **High-Performance Async** - Up to 3x faster than thread-based validators
 - 🚀 **Speed Testing** - Measures and orders resolvers by latency
 - 🌐 **URL Support** - Download resolver lists from URLs (HTTP/HTTPS)
-- 🔍 **Comprehensive Validation** - Multiple validation layers
-- 🛡️ **Poisoning Detection** - Identifies DNS hijacking
+- 🔍 **Comprehensive Validation** - Baseline, poisoning, NXDOMAIN checks
+- 🛡️ **Poisoning Detection** - 3-domain check (Amazon, PayPal, Netflix)
 - 📊 **Multiple Formats** - JSON, plain text, text+speed
 - 🎯 **Speed Filtering** - Filter by min/max latency thresholds
 - 📝 **Smart Parsing** - Auto-extracts IPs from CSV, text, and mixed formats
+- 🔊 **Verbose Mode** - See rejected/filtered servers with reasons
+- 💨 **Streaming Results** - Real-time output as servers are validated
 
 ### Performance
 
-| Method | Time (5 servers) | Improvement |
-|--------|------------------|-------------|
-| Original (unoptimized) | 5.36s | baseline |
-| **PyResolvers** | **2.32s** | **56.7% faster** ⚡ |
-| Speedup | | **2.31x** |
+**Benchmark (500 servers from public-dns.info):**
+
+| Concurrency | Timeout | Time | Test Rate | Speedup |
+|-------------|---------|------|-----------|---------|
+| 50 (default) | 1.0s | 36.7s | 13.6/sec | baseline |
+| 100 | 1.0s | 18.3s | 27.3/sec | **2.0x** ⚡ |
+| 200 | 0.5s | 14.5s | 34.6/sec | **2.5x** 🚀 |
+
+**Estimated time for 62,607 servers:**
+- Default (50 threads): ~77 minutes
+- Optimized (200 threads, 0.5s timeout): **~30 minutes**
 
 ---
 
@@ -71,14 +79,17 @@ pip install pyresolvers
 # Test single resolver
 pyresolvers -t 1.1.1.1
 
-# Test from URL (public DNS list)
-pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 50
+# Test from URL (public DNS list) with optimized settings
+pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 200 -threads 200 -timeout 0.5
 
 # Test from file
 pyresolvers -tL dns_servers.txt
 
 # Get fastest resolvers (< 50ms) and save
 pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 50 -o fast_dns.txt
+
+# Verbose mode - see rejected/slow servers
+pyresolvers -tL resolvers.txt --max-speed 100 -v
 
 # Export as JSON with speed data
 pyresolvers -tL resolvers.txt --format json --max-speed 100 -o valid_dns.json
@@ -123,11 +134,14 @@ results = asyncio.run(main())
 ### CLI Usage
 
 ```bash
-# Use public DNS list from URL
-pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 50
+# Use public DNS list from URL with optimized performance
+pyresolvers -tL https://public-dns.info/nameservers.txt --max-speed 200 -threads 200 -timeout 0.5
 
 # Speed filtering (10ms-100ms range)
 pyresolvers -tL resolvers.txt --min-speed 10 --max-speed 100
+
+# Verbose mode - see all results including rejected/too-slow
+pyresolvers -tL resolvers.txt --max-speed 100 -v
 
 # Silent mode (IPs only) - great for piping
 pyresolvers -tL https://public-dns.info/nameservers.txt --silent --max-speed 30 > fast.txt
@@ -138,10 +152,10 @@ pyresolvers -tL all_resolvers.txt -e 8.8.8.8
 # Exclude servers from URL
 pyresolvers -tL https://public-dns.info/nameservers.txt -eL blacklist.txt
 
-# High performance (100 concurrent)
-pyresolvers -tL large_list.txt -threads 100
+# Maximum performance (200 concurrent, 0.5s timeout)
+pyresolvers -tL large_list.txt -threads 200 -timeout 0.5
 
-# Get top 10 fastest worldwide resolvers
+# Get top 10 fastest worldwide resolvers with real-time streaming
 pyresolvers -tL https://public-dns.info/nameservers.txt -threads 200 --max-speed 30 --format text-with-speed | head -10
 ```
 
@@ -364,7 +378,7 @@ class ValidationResult:
 | `-eL FILE/URL` | Exclude from file/URL |
 | `-r DOMAIN` | Baseline domain (default: bet365.com) |
 | `-threads N` | Concurrency (default: 50) |
-| `-timeout N` | Timeout seconds (default: 5) |
+| `-timeout N` | Timeout seconds (default: 1) |
 | `-o FILE` | Output file |
 | `--format FORMAT` | text, json, text-with-speed |
 | `--max-speed MS` | Max latency filter (ms) |
@@ -377,30 +391,62 @@ class ValidationResult:
 
 ## Performance Tips
 
-- **Concurrency**: 50-100 for best performance on most systems
-- **Timeout**: Lower (3s) for speed, higher (10s+) for thoroughness
-- **Fast Timeout**: Enable (`use_fast_timeout=True`) for 30-50% speedup (may miss slow servers)
-- **Batch Size**: Increase for more memory, decrease for less
-- **Network**: Run from VPS to avoid ISP throttling
+### Recommended Settings
+
+**For 60K+ servers (fastest):**
+```bash
+pyresolvers -tL https://public-dns.info/nameservers.txt -threads 200 -timeout 0.5 --max-speed 200 -o results.txt
+```
+
+**For balanced speed/accuracy:**
+```bash
+pyresolvers -tL large_list.txt -threads 100 -timeout 1 --max-speed 100
+```
+
+**For verbose debugging:**
+```bash
+pyresolvers -tL resolvers.txt -threads 50 -v
+```
+
+### Configuration Guide
+
+- **Concurrency**:
+  - 50-100 for stable performance
+  - 200-300 for maximum speed (requires good network)
+  - Higher may trigger rate limits
+
+- **Timeout**:
+  - 0.5s for fast dead server detection
+  - 1s for balanced performance (default)
+  - 2s+ for slow/distant servers
+
+- **Verbose Mode**: Use `-v` to see rejected servers with reasons:
+  - "Too slow: XXms" - Exceeded max-speed filter
+  - "Timeout" - Server didn't respond
+  - "Invalid" - Failed validation checks
+  - "DNS poisoning" - Detected hijacking
 
 ### Optimization Features
 
 1. **Async I/O** - Non-blocking DNS queries with aiodns
-2. **Parallel Baseline** - Queries trusted resolvers simultaneously
-3. **Fast Timeout** - 1s initial timeout for dead server detection
-4. **Combined Queries** - Reduces DNS round trips
-5. **Batch Processing** - Memory-efficient for huge lists
-6. **Streaming** - Progressive results without holding all in memory
+2. **Parallel Validation** - All checks run simultaneously
+3. **Streaming Output** - Results appear in real-time
+4. **Smart Poisoning** - 3 diverse domains (Amazon, PayPal, Netflix)
+5. **Optimized Defaults** - 50 threads, 1s timeout, fast mode enabled
+6. **Progress Indicators** - Shows validation progress every 100 servers
 
 ---
 
 ## How It Works
 
-1. **Baseline** - Query trusted DNS (Cloudflare, Google) for ground truth
-2. **Poisoning Check** - Test random subdomains to detect hijacking
-3. **NXDOMAIN** - Verify correct NXDOMAIN behavior
-4. **Baseline Compare** - Ensure responses match baseline
-5. **Speed Test** - Measure latency and order results
+1. **Baseline Setup** - Query trusted resolvers (1.1.1.1, 8.8.8.8) for ground truth
+2. **Parallel Validation** - For each server, run simultaneously:
+   - **Poisoning Check** - Test 3 random subdomains (amazon.com, paypal.com, netflix.com)
+   - **NXDOMAIN Check** - Verify correct NXDOMAIN behavior
+   - **Baseline Compare** - Ensure responses match trusted resolvers
+3. **Latency Measurement** - Measure DNS query speed for valid servers
+4. **Real-time Output** - Stream results as validation completes
+5. **Speed Filtering** - Apply min/max latency filters and output sorted results
 
 ---
 

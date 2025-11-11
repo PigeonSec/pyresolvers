@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 import sys
-from argparse import ArgumentParser
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import urlopen
@@ -125,6 +125,17 @@ class InputHelper:
             parser.error(f"{arg} is not a valid integer")
 
     @staticmethod
+    def check_positive_float(parser, arg):
+        """Validate positive float or integer."""
+        try:
+            value = float(arg)
+            if value <= 0:
+                parser.error(f"{arg} must be a positive number")
+            return value
+        except ValueError:
+            parser.error(f"{arg} is not a valid number")
+
+    @staticmethod
     def return_targets(arguments):
         """Return final target list with exclusions applied."""
         targets = set()
@@ -160,51 +171,130 @@ class InputParser:
     @staticmethod
     def setup_parser():
         """Setup argument parser."""
-        parser = ArgumentParser(description='DNS Resolver Validator with Speed Testing')
+        parser = ArgumentParser(
+            prog='pyresolvers',
+            description='High-Performance Async DNS Resolver Validator & Speed Tester',
+            epilog='''
+Examples:
+  pyresolvers -t 1.1.1.1                                    # Test single server
+  pyresolvers -tL dns_list.txt --max-speed 50              # Test file, filter <50ms
+  pyresolvers -tL url --max-speed 200 -threads 200 -timeout 0.5  # Fast scan
+  pyresolvers -tL list.txt -v --max-speed 100              # Verbose with filtering
+  pyresolvers -tL list.txt --format json -o results.json  # Export to JSON
+  pyresolvers -tL list.txt --silent > fast.txt            # Pipe IPs only
 
-        targets = parser.add_mutually_exclusive_group(required=False)
-        targets.add_argument('-t', dest='target', help='Target DNS server IP')
+For more info: https://github.com/PigeonSec/pyresolvers
+            ''',
+            formatter_class=lambda prog: RawDescriptionHelpFormatter(prog, max_help_position=35, width=100)
+        )
+
+        # INPUT OPTIONS
+        input_group = parser.add_argument_group('Input Options')
+        targets = input_group.add_mutually_exclusive_group(required=False)
+        targets.add_argument(
+            '-t', dest='target',
+            metavar='IP',
+            help='Test single DNS server (e.g., -t 1.1.1.1)'
+        )
         targets.add_argument(
             '-tL', dest='target_list',
             default="https://public-dns.info/nameservers.txt",
+            metavar='FILE/URL',
             type=lambda x: InputHelper.process_targets(parser, x),
-            help='File or URL with DNS server IPs (default: public-dns.info)'
+            help='File or URL with DNS servers (default: public-dns.info list)'
         )
 
-        exclusions = parser.add_mutually_exclusive_group()
-        exclusions.add_argument('-e', dest='exclusion', help='Exclude specific server')
+        exclusions = input_group.add_mutually_exclusive_group()
+        exclusions.add_argument(
+            '-e', dest='exclusion',
+            metavar='IP',
+            help='Exclude single server (e.g., -e 8.8.8.8)'
+        )
         exclusions.add_argument(
             '-eL', dest='exclusions_list',
+            metavar='FILE/URL',
             type=lambda x: InputHelper.process_targets(parser, x),
             help='File or URL with servers to exclude'
         )
 
-        parser.add_argument('-o', '--output', help='Output file for results')
-        parser.add_argument('-r', dest='rootdomain', default="bet365.com",
-                          help='Root domain for testing (default: bet365.com)')
-        parser.add_argument('-q', dest='query', default="dnsvalidator",
-                          help='Query prefix for NXDOMAIN testing')
-        parser.add_argument('-threads', dest='threads', default=50,
-                          type=lambda x: InputHelper.check_positive(parser, x),
-                          help='Max concurrent threads (default: 50)')
-        parser.add_argument('-timeout', dest='timeout', default=5,
-                          type=lambda x: InputHelper.check_positive(parser, x),
-                          help='Timeout in seconds (default: 5)')
-        parser.add_argument('--no-color', dest='nocolor', action='store_true',
-                          help='Disable colored output')
+        # VALIDATION OPTIONS
+        valid_group = parser.add_argument_group('Validation Options')
+        valid_group.add_argument(
+            '-r', dest='rootdomain',
+            default="bet365.com",
+            metavar='DOMAIN',
+            help='Baseline domain for validation (default: bet365.com)'
+        )
+        valid_group.add_argument(
+            '-q', dest='query',
+            default="dnsvalidator",
+            metavar='PREFIX',
+            help='NXDOMAIN test prefix (default: dnsvalidator)'
+        )
 
-        output_types = parser.add_mutually_exclusive_group()
-        output_types.add_argument('-v', '--verbose', dest='verbose', action='store_true',
-                                help='Enable verbose output')
-        output_types.add_argument('--silent', dest='silent', action='store_true',
-                                help='Only output valid server IPs')
+        # PERFORMANCE OPTIONS
+        perf_group = parser.add_argument_group('Performance Options')
+        perf_group.add_argument(
+            '-threads', dest='threads',
+            default=50,
+            metavar='N',
+            type=lambda x: InputHelper.check_positive(parser, x),
+            help='Concurrent workers (default: 50, recommended: 100-200 for speed)'
+        )
+        perf_group.add_argument(
+            '-timeout', dest='timeout',
+            default=1,
+            metavar='SEC',
+            type=lambda x: InputHelper.check_positive_float(parser, x),
+            help='DNS timeout in seconds (default: 1, use 0.5 for speed)'
+        )
 
-        parser.add_argument('--format', dest='output_format', default='text',
-                          choices=['text', 'json', 'text-with-speed'],
-                          help='Output format (default: text)')
-        parser.add_argument('--max-speed', dest='max_speed', type=float,
-                          help='Max response time in ms (filter slower servers)')
-        parser.add_argument('--min-speed', dest='min_speed', type=float,
-                          help='Min response time in ms (filter faster servers)')
+        # FILTERING OPTIONS
+        filter_group = parser.add_argument_group('Speed Filtering Options')
+        filter_group.add_argument(
+            '--max-speed', dest='max_speed',
+            type=float,
+            metavar='MS',
+            help='Only show servers faster than MS milliseconds (e.g., --max-speed 50)'
+        )
+        filter_group.add_argument(
+            '--min-speed', dest='min_speed',
+            type=float,
+            metavar='MS',
+            help='Only show servers slower than MS milliseconds (for filtering out local)'
+        )
+
+        # OUTPUT OPTIONS
+        output_group = parser.add_argument_group('Output Options')
+        output_group.add_argument(
+            '-o', '--output',
+            metavar='FILE',
+            help='Save results to file (format depends on --format flag)'
+        )
+        output_group.add_argument(
+            '--format', dest='output_format',
+            default='text',
+            choices=['text', 'json', 'text-with-speed'],
+            metavar='FMT',
+            help='Output format: text (IPs only), json (with latency), text-with-speed (IP + latency)'
+        )
+
+        output_types = output_group.add_mutually_exclusive_group()
+        output_types.add_argument(
+            '-v', '--verbose', dest='verbose',
+            action='store_true',
+            help='Show rejected servers with reasons (Too slow, Timeout, Invalid, Poisoned)'
+        )
+        output_types.add_argument(
+            '--silent', dest='silent',
+            action='store_true',
+            help='Only output valid IPs, no banners or progress (great for piping)'
+        )
+
+        output_group.add_argument(
+            '--no-color', dest='nocolor',
+            action='store_true',
+            help='Disable colored terminal output'
+        )
 
         return parser
