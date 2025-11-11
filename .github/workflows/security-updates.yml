@@ -1,0 +1,195 @@
+name: Security Updates
+
+on:
+  schedule:
+    # Run every Monday at 2 AM UTC
+    - cron: '0 2 * * 1'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest pip-audit safety
+
+    - name: Run security audit with pip-audit
+      id: pip_audit
+      continue-on-error: true
+      run: |
+        pip-audit --desc > security-report.txt 2>&1 || echo "vulnerabilities_found=true" >> $GITHUB_OUTPUT
+        cat security-report.txt
+
+    - name: Check for vulnerabilities with Safety
+      id: safety_check
+      continue-on-error: true
+      run: |
+        safety check --json > safety-report.json 2>&1 || echo "safety_issues=true" >> $GITHUB_OUTPUT
+
+    - name: Attempt to fix vulnerabilities
+      if: steps.pip_audit.outputs.vulnerabilities_found == 'true' || steps.safety_check.outputs.safety_issues == 'true'
+      id: fix_vulnerabilities
+      run: |
+        # Upgrade all dependencies to latest secure versions
+        pip list --outdated --format=json | python -c "
+        import json, sys
+        packages = json.load(sys.stdin)
+        for pkg in packages:
+            print(pkg['name'])
+        " > outdated.txt
+
+        # Read requirements and upgrade
+        if [ -f "requirements.txt" ]; then
+          while IFS= read -r package; do
+            if [ ! -z "$package" ]; then
+              pip install --upgrade "$package" || true
+            fi
+          done < outdated.txt
+
+          # Freeze new versions
+          pip freeze | grep -v "pyresolvers" > requirements-new.txt
+          mv requirements-new.txt requirements.txt
+
+          echo "updated=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Run all tests
+      if: steps.fix_vulnerabilities.outputs.updated == 'true'
+      id: run_tests
+      run: |
+        pytest tests/test_validator.py -v --tb=short
+        pytest tests/test_cli.py -v --tb=short
+        echo "tests_passed=true" >> $GITHUB_OUTPUT
+
+    - name: Get current version
+      if: steps.run_tests.outputs.tests_passed == 'true'
+      id: get_version
+      run: |
+        VERSION=$(python -c "import re; content=open('pyresolvers/lib/core/__version__.py').read(); print(re.search(r\"'([^']+)'\", content).group(1))")
+        echo "current_version=$VERSION" >> $GITHUB_OUTPUT
+
+        # Calculate new patch version
+        IFS='.' read -ra PARTS <<< "$VERSION"
+        MAJOR="${PARTS[0]}"
+        MINOR="${PARTS[1]}"
+        PATCH="${PARTS[2]}"
+        NEW_PATCH=$((PATCH + 1))
+        NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+    - name: Bump version
+      if: steps.run_tests.outputs.tests_passed == 'true'
+      run: |
+        NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
+        echo "__version__ = '$NEW_VERSION'" > pyresolvers/lib/core/__version__.py
+
+    - name: Create security update branch
+      if: steps.run_tests.outputs.tests_passed == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+
+        BRANCH_NAME="security/auto-update-$(date +%Y%m%d)"
+        git checkout -b $BRANCH_NAME
+
+        git add requirements.txt pyresolvers/lib/core/__version__.py
+
+        # Create detailed commit message
+        echo "Security update v${{ steps.get_version.outputs.new_version }}" > commit-msg.txt
+        echo "" >> commit-msg.txt
+        echo "Automated security dependency updates:" >> commit-msg.txt
+        echo "" >> commit-msg.txt
+        cat security-report.txt >> commit-msg.txt || echo "No detailed report available" >> commit-msg.txt
+        echo "" >> commit-msg.txt
+        echo "All tests passed after updates." >> commit-msg.txt
+
+        git commit -F commit-msg.txt
+        git push origin $BRANCH_NAME
+
+        echo "branch_name=$BRANCH_NAME" >> $GITHUB_ENV
+
+    - name: Create Pull Request
+      if: steps.run_tests.outputs.tests_passed == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        BRANCH_NAME="security/auto-update-$(date +%Y%m%d)"
+        NEW_VERSION="${{ steps.get_version.outputs.new_version }}"
+
+        gh pr create \
+          --title "🔒 Security Update v$NEW_VERSION" \
+          --body "$(cat <<'EOF'
+## Automated Security Update
+
+This PR contains automated security dependency updates.
+
+### Changes
+- Updated vulnerable dependencies to secure versions
+- Bumped version to v$NEW_VERSION
+- All tests passed ✅
+
+### Security Report
+\`\`\`
+$(cat security-report.txt)
+\`\`\`
+
+### Test Results
+- ✅ Unit tests passed
+- ✅ CLI tests passed
+
+### Next Steps
+1. Review the dependency changes
+2. Merge this PR to trigger release workflow
+3. A new release will be automatically published to PyPI
+
+---
+🤖 This PR was automatically generated by the security workflow
+EOF
+)" \
+          --base master \
+          --head $BRANCH_NAME \
+          --label "security,automated"
+
+    - name: Auto-merge if tests pass
+      if: steps.run_tests.outputs.tests_passed == 'true'
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        BRANCH_NAME="security/auto-update-$(date +%Y%m%d)"
+
+        # Wait a moment for PR to be created
+        sleep 5
+
+        # Get PR number
+        PR_NUMBER=$(gh pr list --head $BRANCH_NAME --json number --jq '.[0].number')
+
+        if [ ! -z "$PR_NUMBER" ]; then
+          # Enable auto-merge
+          gh pr merge $PR_NUMBER --auto --squash --delete-branch
+
+          echo "✅ Auto-merge enabled for PR #$PR_NUMBER"
+          echo "PR will merge automatically once all checks pass"
+        fi
+
+    - name: No vulnerabilities found
+      if: steps.pip_audit.outputs.vulnerabilities_found != 'true' && steps.safety_check.outputs.safety_issues != 'true'
+      run: |
+        echo "✅ No security vulnerabilities found"
+        echo "All dependencies are up to date and secure"
