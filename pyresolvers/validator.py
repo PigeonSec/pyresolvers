@@ -13,10 +13,12 @@ from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import AsyncIterator, Dict, List, Optional, Tuple
 
 try:
-    import aiodns
-    AIODNS_AVAILABLE = True
+    import dns.asyncresolver
+    import dns.exception
+    import dns.resolver
+    DNSPYTHON_AVAILABLE = True
 except ImportError:
-    AIODNS_AVAILABLE = False
+    DNSPYTHON_AVAILABLE = False
 
 # Configuration
 TRUSTED_RESOLVERS = ["1.1.1.1", "8.8.8.8"]
@@ -59,9 +61,9 @@ class Validator:
         batch_size: int = BATCH_SIZE,
         verbose: bool = False
     ) -> None:
-        if not AIODNS_AVAILABLE:
+        if not DNSPYTHON_AVAILABLE:
             raise ImportError(
-                "aiodns required for Validator. Install with: pip install aiodns\n"
+                "dnspython required for Validator. Install with: pip install dnspython\n"
                 "Or: pip install -r requirements.txt"
             )
 
@@ -77,9 +79,6 @@ class Validator:
         self.verbose = verbose
         self._baseline_ip = ""
         self._baseline_data: Dict[str, Dict] = {}
-        # Resolver cache to prevent creating too many instances
-        self._resolver_cache: Dict[str, aiodns.DNSResolver] = {}
-        self._cache_lock: Optional[asyncio.Lock] = None
 
     @staticmethod
     def _random_subdomain(length: int = SUBDOMAIN_LENGTH) -> str:
@@ -99,51 +98,42 @@ class Validator:
         if self.verbose:
             print(msg)
 
-    async def _get_resolver(self, nameserver: str, timeout: Optional[int] = None) -> aiodns.DNSResolver:
-        """Get or create a cached DNS resolver for the given nameserver.
+    def _create_resolver(self, nameserver: str, timeout: Optional[float] = None) -> dns.asyncresolver.Resolver:
+        """Create a DNS resolver using dnspython (no inotify watches).
 
-        This prevents creating too many resolver instances which would exhaust
-        inotify watches on Linux systems.
+        dnspython doesn't use c-ares, so it avoids inotify watch exhaustion.
         """
-        # Initialize lock on first use
-        if self._cache_lock is None:
-            self._cache_lock = asyncio.Lock()
-
-        cache_key = f"{nameserver}:{timeout or self.timeout}"
-
-        async with self._cache_lock:
-            if cache_key not in self._resolver_cache:
-                self._resolver_cache[cache_key] = aiodns.DNSResolver(
-                    nameservers=[nameserver],
-                    timeout=timeout or self.timeout
-                )
-            return self._resolver_cache[cache_key]
+        resolver = dns.asyncresolver.Resolver()
+        resolver.nameservers = [nameserver]
+        resolver.timeout = timeout or self.timeout
+        resolver.lifetime = timeout or self.timeout
+        return resolver
 
     async def _setup_baseline_single(self, resolver_ip: str) -> bool:
         """Setup baseline from single trusted resolver."""
         self._log(f"[INFO] {resolver_ip} - Establishing baseline")
         try:
-            resolver = await self._get_resolver(resolver_ip)
+            resolver = self._create_resolver(resolver_ip)
             data = {}
 
             # Get baseline IP
-            result = await resolver.query(self.baseline_domain, 'A')
-            data["ip"] = self._baseline_ip = result[0].host
+            result = await resolver.resolve(self.baseline_domain, 'A')
+            data["ip"] = self._baseline_ip = str(result[0])
 
             # Test domains in parallel
-            domain_tasks = [resolver.query(domain, 'A') for domain in self.test_domains]
+            domain_tasks = [resolver.resolve(domain, 'A') for domain in self.test_domains]
             domain_results = await asyncio.gather(*domain_tasks, return_exceptions=True)
 
             data["domains"] = {}
             for domain, result in zip(self.test_domains, domain_results):
                 if not isinstance(result, Exception):
-                    data["domains"][domain] = result[0].host
+                    data["domains"][domain] = str(result[0])
 
             # NXDOMAIN check
             try:
-                await resolver.query(self.query_prefix + self.baseline_domain, 'A')
+                await resolver.resolve(self.query_prefix + self.baseline_domain, 'A')
                 data["nxdomain"] = False
-            except aiodns.error.DNSError:
+            except (dns.exception.DNSException, dns.resolver.NXDOMAIN):
                 data["nxdomain"] = True
 
             self._baseline_data[resolver_ip] = data
@@ -159,14 +149,14 @@ class Validator:
         success_count = sum(1 for r in results if r is True)
         return success_count == len(self.trusted_resolvers)
 
-    async def _check_poisoning(self, resolver: aiodns.DNSResolver, server: str) -> Optional[str]:
+    async def _check_poisoning(self, resolver: dns.asyncresolver.Resolver, server: str) -> Optional[str]:
         """Check for DNS poisoning with parallel queries.
 
-        All 5 poison domains are checked in parallel for maximum speed.
+        All poison domains are checked in parallel for maximum speed.
         Returns immediately if ANY domain resolves (indicating poisoning).
         """
         subdomains = [f"{self._random_subdomain()}.{domain}" for domain in self.poison_check_domains]
-        tasks = [resolver.query(subdomain, 'A') for subdomain in subdomains]
+        tasks = [resolver.resolve(subdomain, 'A') for subdomain in subdomains]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         for subdomain, result in zip(subdomains, results):
@@ -176,15 +166,15 @@ class Validator:
         return None
 
     async def _check_nxdomain_and_baseline(
-        self, resolver: aiodns.DNSResolver, server: str
+        self, resolver: dns.asyncresolver.Resolver, server: str
     ) -> Tuple[bool, bool, Optional[str]]:
         """Combined NXDOMAIN and baseline validation check. Returns (has_nxdomain, baseline_matches, error)."""
         subdomain = f"{self._random_subdomain()}.{self.baseline_domain}"
 
         try:
             # Check NXDOMAIN and baseline in parallel
-            nxdomain_task = resolver.query(subdomain, 'A')
-            baseline_task = resolver.query(self.baseline_domain, 'A')
+            nxdomain_task = resolver.resolve(subdomain, 'A')
+            baseline_task = resolver.resolve(self.baseline_domain, 'A')
 
             nxdomain_result, baseline_result = await asyncio.gather(
                 nxdomain_task, baseline_task, return_exceptions=True
@@ -196,7 +186,7 @@ class Validator:
             # Baseline should match
             baseline_matches = False
             if not isinstance(baseline_result, Exception):
-                resolved_ip = baseline_result[0].host
+                resolved_ip = str(baseline_result[0])
                 baseline_matches = resolved_ip == self._baseline_ip
 
             return has_nxdomain, baseline_matches, None
@@ -215,9 +205,9 @@ class Validator:
     async def _measure_latency(self, server: str) -> float:
         """Measure simple DNS query latency."""
         try:
-            resolver = await self._get_resolver(server, timeout=1)
+            resolver = self._create_resolver(server, timeout=1)
             start = time.time()
-            await resolver.query(self.baseline_domain, 'A')
+            await resolver.resolve(self.baseline_domain, 'A')
             return (time.time() - start) * 1000
         except:
             return -1
@@ -229,7 +219,7 @@ class Validator:
 
         try:
             timeout = FAST_TIMEOUT if self.use_fast_timeout else self.timeout
-            resolver = await self._get_resolver(server, timeout=timeout)
+            resolver = self._create_resolver(server, timeout=timeout)
 
             # Run ALL checks in parallel for max speed
             poison_task = self._check_poisoning(resolver, server)

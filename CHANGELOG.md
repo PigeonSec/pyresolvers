@@ -5,6 +5,19 @@ All notable changes to PyResolvers will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-01-11
+
+### Changed
+- **BREAKING**: Replaced aiodns/pycares with dnspython for DNS resolution
+- Completely eliminates inotify watch exhaustion issues on Linux systems
+- No more "Failed to initialize c-ares channel" errors
+- Resolvers now scale to process 65k+ servers without resource limits
+
+### Fixed
+- Fixed functionality breaking when processing large resolver lists
+- Resolved incomplete validation results (was only getting ~350/65k resolvers)
+- Eliminated system resource exhaustion during large batch processing
+
 ## [2.3.1] - 2025-01-11
 
 ### Fixed
