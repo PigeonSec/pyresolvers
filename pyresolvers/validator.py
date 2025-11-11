@@ -167,18 +167,21 @@ class Validator:
 
     async def _check_nxdomain_and_baseline(
         self, resolver: dns.asyncresolver.Resolver, server: str
-    ) -> Tuple[bool, bool, Optional[str]]:
-        """Combined NXDOMAIN and baseline validation check. Returns (has_nxdomain, baseline_matches, error)."""
+    ) -> Tuple[bool, bool, float, Optional[str]]:
+        """Combined NXDOMAIN and baseline validation check. Returns (has_nxdomain, baseline_matches, latency_ms, error)."""
         subdomain = f"{self._random_subdomain()}.{self.baseline_domain}"
 
         try:
-            # Check NXDOMAIN and baseline in parallel
+            # Check NXDOMAIN
             nxdomain_task = resolver.resolve(subdomain, 'A')
-            baseline_task = resolver.resolve(self.baseline_domain, 'A')
 
+            # Measure baseline latency
+            start = time.time()
+            baseline_task = resolver.resolve(self.baseline_domain, 'A')
             nxdomain_result, baseline_result = await asyncio.gather(
                 nxdomain_task, baseline_task, return_exceptions=True
             )
+            latency_ms = (time.time() - start) * 1000
 
             # NXDOMAIN should fail
             has_nxdomain = isinstance(nxdomain_result, Exception)
@@ -189,10 +192,10 @@ class Validator:
                 resolved_ip = str(baseline_result[0])
                 baseline_matches = resolved_ip == self._baseline_ip
 
-            return has_nxdomain, baseline_matches, None
+            return has_nxdomain, baseline_matches, latency_ms, None
 
         except Exception as e:
-            return False, False, f"Error: {str(e)}"
+            return False, False, -1, f"Error: {str(e)}"
 
     def _matches_baseline(self, has_nxdomain: bool) -> bool:
         """Verify resolver matches baseline behavior."""
@@ -213,7 +216,7 @@ class Validator:
             return -1
 
     async def _validate_server(self, server: str) -> ValidationResult:
-        """Fast validation - just check if server is valid, no latency measurement."""
+        """Validate server and measure latency during baseline check."""
         if not self._is_valid_ip(server):
             return ValidationResult(server, False, -1, "Invalid IP")
 
@@ -225,7 +228,7 @@ class Validator:
             poison_task = self._check_poisoning(resolver, server)
             nxdomain_task = self._check_nxdomain_and_baseline(resolver, server)
 
-            poison_error, (has_nxdomain, baseline_matches, nxdomain_error) = await asyncio.gather(
+            poison_error, (has_nxdomain, baseline_matches, latency_ms, nxdomain_error) = await asyncio.gather(
                 poison_task, nxdomain_task
             )
 
@@ -235,7 +238,7 @@ class Validator:
                 return ValidationResult(server, False, -1, nxdomain_error)
 
             valid = baseline_matches and self._matches_baseline(has_nxdomain)
-            return ValidationResult(server, valid, -1, None if valid else "Invalid")
+            return ValidationResult(server, valid, latency_ms if valid else -1, None if valid else "Invalid")
 
         except asyncio.TimeoutError:
             return ValidationResult(server, False, -1, "Timeout")
@@ -283,18 +286,11 @@ class Validator:
         """Get valid servers ordered by speed."""
         results = await self.validate_async(servers)
 
-        # Measure latency for valid servers
-        valid_servers = [r.server for r in results if r.valid]
-
-        # Measure latencies in parallel
-        latency_tasks = [self._measure_latency(server) for server in valid_servers]
-        latencies = await asyncio.gather(*latency_tasks)
-
-        # Combine servers with their latencies
+        # Use latency from validation results (already measured during baseline check)
         filtered = [
-            (server, latency)
-            for server, latency in zip(valid_servers, latencies)
-            if latency > 0
+            (r.server, r.latency_ms)
+            for r in results
+            if r.valid and r.latency_ms > 0
         ]
 
         if min_ms:
