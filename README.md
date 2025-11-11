@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="logo.png" alt="PyResolvers Logo" width="200" height="200">
+<img src="https://raw.githubusercontent.com/PigeonSec/pyresolvers/master/logo.png" alt="PyResolvers Logo" width="200" height="200">
 
 # PyResolvers
 
