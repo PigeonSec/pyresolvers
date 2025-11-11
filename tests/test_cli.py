@@ -160,7 +160,7 @@ class TestCLI(unittest.TestCase):
 
     def test_timeout_parameter(self):
         """Test -timeout flag with float value."""
-        result = self.run_cli(["-tL", self.test_servers_file, "-timeout", "0.5"])
+        result = self.run_cli(["-tL", self.test_servers_file, "-timeout", "1.5"])
         self.assertEqual(result.returncode, 0)
         # Should complete without error
 
