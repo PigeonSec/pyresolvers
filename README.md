@@ -6,8 +6,8 @@
 
 **High-Performance Async DNS Resolver Validation & Speed Testing**
 
-[![Tests](https://github.com/PigeonSec/pyresolvers/actions/workflows/test-and-publish.yml/badge.svg)](https://github.com/PigeonSec/pyresolvers/actions/workflows/test-and-publish.yml)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/)
+[![Tests](https://github.com/PigeonSec/pyresolvers/actions/workflows/test-and-publish.yml/badge.svg?branch=master)](https://github.com/PigeonSec/pyresolvers/actions/workflows/test-and-publish.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![PyPI version](https://img.shields.io/pypi/v/pyresolvers.svg)](https://pypi.org/project/pyresolvers/)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
@@ -66,7 +66,7 @@ pip install -e .
 pip install pyresolvers
 ```
 
-**Requirements**: Python 3.8+, aiodns, pycares, colorclass
+**Requirements**: Python 3.12+, aiodns, pycares, colorclass
 
 ---
 
