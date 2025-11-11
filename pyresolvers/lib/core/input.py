@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
@@ -50,13 +51,37 @@ class InputHelper:
 
     @staticmethod
     def process_url(parser, url):
-        """Fetch targets from URL."""
+        """Fetch targets from URL and validate IP addresses."""
         try:
             with urlopen(url, timeout=30) as response:
                 if response.status != 200:
                     parser.error(f"HTTP {response.status} from {url}")
                 content = response.read().decode('utf-8')
-                return content.split()
+                lines = content.splitlines()
+
+                # Filter and validate IP addresses
+                ip_pattern = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
+                targets = []
+
+                for line in lines:
+                    line = line.strip()
+                    # Skip empty lines and comments
+                    if not line or line.startswith('#'):
+                        continue
+                    # Extract IP if line contains other data (e.g., CSV format)
+                    parts = re.split(r'[,\s\t]+', line)
+                    for part in parts:
+                        if ip_pattern.match(part):
+                            # Basic validation: octets should be 0-255
+                            octets = [int(x) for x in part.split('.')]
+                            if all(0 <= octet <= 255 for octet in octets):
+                                targets.append(part)
+                                break  # Only take first valid IP per line
+
+                if not targets:
+                    parser.error(f"No valid IP addresses found in {url}")
+
+                return targets
         except HTTPError as e:
             parser.error(f"HTTP {e.code} from {url}")
         except URLError as e:
@@ -66,9 +91,27 @@ class InputHelper:
 
     @staticmethod
     def process_file(path):
-        """Load targets from file."""
+        """Load targets from file and validate IP addresses."""
+        ip_pattern = re.compile(r'^(\d{1,3}\.){3}\d{1,3}$')
+        targets = []
+
         with open(path, 'r', encoding='utf-8') as f:
-            return [line.strip() for line in f if line.strip()]
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if not line or line.startswith('#'):
+                    continue
+                # Extract IP if line contains other data
+                parts = re.split(r'[,\s\t]+', line)
+                for part in parts:
+                    if ip_pattern.match(part):
+                        # Basic validation: octets should be 0-255
+                        octets = [int(x) for x in part.split('.')]
+                        if all(0 <= octet <= 255 for octet in octets):
+                            targets.append(part)
+                            break  # Only take first valid IP per line
+
+        return targets
 
     @staticmethod
     def check_positive(parser, arg):
