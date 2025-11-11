@@ -77,6 +77,9 @@ class Validator:
         self.verbose = verbose
         self._baseline_ip = ""
         self._baseline_data: Dict[str, Dict] = {}
+        # Resolver cache to prevent creating too many instances
+        self._resolver_cache: Dict[str, aiodns.DNSResolver] = {}
+        self._cache_lock: Optional[asyncio.Lock] = None
 
     @staticmethod
     def _random_subdomain(length: int = SUBDOMAIN_LENGTH) -> str:
@@ -96,11 +99,31 @@ class Validator:
         if self.verbose:
             print(msg)
 
+    async def _get_resolver(self, nameserver: str, timeout: Optional[int] = None) -> aiodns.DNSResolver:
+        """Get or create a cached DNS resolver for the given nameserver.
+
+        This prevents creating too many resolver instances which would exhaust
+        inotify watches on Linux systems.
+        """
+        # Initialize lock on first use
+        if self._cache_lock is None:
+            self._cache_lock = asyncio.Lock()
+
+        cache_key = f"{nameserver}:{timeout or self.timeout}"
+
+        async with self._cache_lock:
+            if cache_key not in self._resolver_cache:
+                self._resolver_cache[cache_key] = aiodns.DNSResolver(
+                    nameservers=[nameserver],
+                    timeout=timeout or self.timeout
+                )
+            return self._resolver_cache[cache_key]
+
     async def _setup_baseline_single(self, resolver_ip: str) -> bool:
         """Setup baseline from single trusted resolver."""
         self._log(f"[INFO] {resolver_ip} - Establishing baseline")
         try:
-            resolver = aiodns.DNSResolver(nameservers=[resolver_ip], timeout=self.timeout)
+            resolver = await self._get_resolver(resolver_ip)
             data = {}
 
             # Get baseline IP
@@ -192,7 +215,7 @@ class Validator:
     async def _measure_latency(self, server: str) -> float:
         """Measure simple DNS query latency."""
         try:
-            resolver = aiodns.DNSResolver(nameservers=[server], timeout=1)
+            resolver = await self._get_resolver(server, timeout=1)
             start = time.time()
             await resolver.query(self.baseline_domain, 'A')
             return (time.time() - start) * 1000
@@ -205,7 +228,8 @@ class Validator:
             return ValidationResult(server, False, -1, "Invalid IP")
 
         try:
-            resolver = aiodns.DNSResolver(nameservers=[server], timeout=FAST_TIMEOUT if self.use_fast_timeout else self.timeout)
+            timeout = FAST_TIMEOUT if self.use_fast_timeout else self.timeout
+            resolver = await self._get_resolver(server, timeout=timeout)
 
             # Run ALL checks in parallel for max speed
             poison_task = self._check_poisoning(resolver, server)
