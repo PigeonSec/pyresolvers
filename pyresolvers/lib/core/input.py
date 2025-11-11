@@ -171,6 +171,8 @@ class InputParser:
     @staticmethod
     def setup_parser():
         """Setup argument parser."""
+        from pyresolvers.lib.core.__version__ import __version__
+
         parser = ArgumentParser(
             prog='pyresolvers',
             description='High-Performance Async DNS Resolver Validator & Speed Tester',
@@ -189,6 +191,12 @@ Cron Usage (recommended):
 Docs: https://github.com/PigeonSec/pyresolvers
             ''',
             formatter_class=lambda prog: RawDescriptionHelpFormatter(prog, max_help_position=35, width=100)
+        )
+
+        parser.add_argument(
+            '--version', '-V',
+            action='version',
+            version=f'%(prog)s {__version__}'
         )
 
         # INPUT OPTIONS
