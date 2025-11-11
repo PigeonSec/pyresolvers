@@ -150,18 +150,24 @@ class Validator:
 
     async def _check_nxdomain_and_baseline(
         self, resolver: aiodns.DNSResolver, server: str
-    ) -> Tuple[bool, bool, Optional[str]]:
-        """Combined NXDOMAIN and baseline validation check."""
+    ) -> Tuple[bool, bool, float, Optional[str]]:
+        """Combined NXDOMAIN and baseline validation check. Returns (has_nxdomain, baseline_matches, latency_ms, error)."""
         subdomain = f"{self._random_subdomain()}.{self.baseline_domain}"
 
         try:
             # Check NXDOMAIN and baseline in parallel
             nxdomain_task = resolver.query(subdomain, 'A')
+
+            # Measure latency for baseline query only
+            baseline_start = time.time()
             baseline_task = resolver.query(self.baseline_domain, 'A')
 
             nxdomain_result, baseline_result = await asyncio.gather(
                 nxdomain_task, baseline_task, return_exceptions=True
             )
+
+            # Calculate latency from baseline query only
+            latency_ms = (time.time() - baseline_start) * 1000
 
             # NXDOMAIN should fail
             has_nxdomain = isinstance(nxdomain_result, Exception)
@@ -172,10 +178,10 @@ class Validator:
                 resolved_ip = baseline_result[0].host
                 baseline_matches = resolved_ip == self._baseline_ip
 
-            return has_nxdomain, baseline_matches, None
+            return has_nxdomain, baseline_matches, latency_ms, None
 
         except Exception as e:
-            return False, False, f"Error: {str(e)}"
+            return False, False, -1, f"Error: {str(e)}"
 
     def _matches_baseline(self, has_nxdomain: bool) -> bool:
         """Verify resolver matches baseline behavior."""
@@ -191,7 +197,6 @@ class Validator:
             return ValidationResult(server, False, -1, "Invalid IP")
 
         self._log(f"[INFO] {server} - Validating...")
-        start = time.time()
 
         # Use fast timeout for quick dead server detection
         timeout = FAST_TIMEOUT if self.use_fast_timeout else self.timeout
@@ -208,21 +213,20 @@ class Validator:
             if self.use_fast_timeout and timeout < self.timeout:
                 resolver = aiodns.DNSResolver(nameservers=[server], timeout=self.timeout)
 
-            # Combined NXDOMAIN and baseline check
-            has_nxdomain, baseline_matches, error = await self._check_nxdomain_and_baseline(resolver, server)
+            # Combined NXDOMAIN and baseline check (measure latency for baseline query only)
+            has_nxdomain, baseline_matches, latency, error = await self._check_nxdomain_and_baseline(resolver, server)
             if error:
                 return ValidationResult(server, False, -1, error)
 
-            latency = (time.time() - start) * 1000
             valid = baseline_matches and self._matches_baseline(has_nxdomain)
 
             self._log(f"[{'OK' if valid else 'FAIL'}] {server} - {latency:.2f}ms")
             return ValidationResult(server, valid, latency, None if valid else "Invalid")
 
         except asyncio.TimeoutError:
-            return ValidationResult(server, False, (time.time() - start) * 1000, "Timeout")
+            return ValidationResult(server, False, -1, "Timeout")
         except Exception as e:
-            return ValidationResult(server, False, (time.time() - start) * 1000, str(e))
+            return ValidationResult(server, False, -1, str(e))
 
     async def _validate_batch(self, servers: List[str]) -> List[ValidationResult]:
         """Validate batch of servers with concurrency limit."""

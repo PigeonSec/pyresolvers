@@ -363,8 +363,8 @@ class ValidationResult:
 | `-e SERVER` | Exclude server |
 | `-eL FILE/URL` | Exclude from file/URL |
 | `-r DOMAIN` | Baseline domain (default: bet365.com) |
-| `-threads N` | Concurrency (default: 5) |
-| `-timeout N` | Timeout seconds (default: 600) |
+| `-threads N` | Concurrency (default: 50) |
+| `-timeout N` | Timeout seconds (default: 5) |
 | `-o FILE` | Output file |
 | `--format FORMAT` | text, json, text-with-speed |
 | `--max-speed MS` | Max latency filter (ms) |

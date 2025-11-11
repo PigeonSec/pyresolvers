@@ -184,12 +184,12 @@ class InputParser:
                           help='Root domain for testing (default: bet365.com)')
         parser.add_argument('-q', dest='query', default="dnsvalidator",
                           help='Query prefix for NXDOMAIN testing')
-        parser.add_argument('-threads', dest='threads', default=5,
+        parser.add_argument('-threads', dest='threads', default=50,
                           type=lambda x: InputHelper.check_positive(parser, x),
-                          help='Max concurrent threads (default: 5)')
-        parser.add_argument('-timeout', dest='timeout', default=600,
+                          help='Max concurrent threads (default: 50)')
+        parser.add_argument('-timeout', dest='timeout', default=5,
                           type=lambda x: InputHelper.check_positive(parser, x),
-                          help='Timeout in seconds (default: 600)')
+                          help='Timeout in seconds (default: 5)')
         parser.add_argument('--no-color', dest='nocolor', action='store_true',
                           help='Disable colored output')
 
